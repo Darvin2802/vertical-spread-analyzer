@@ -1,0 +1,1458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Vertical Spread Analyzer</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<style>
+  body { font-family: 'Inter', system-ui, sans-serif; color: #e2e8f0; background:#0b1120; margin:0; padding:16px; }
+  .osa-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .osa-header h2 { margin:0; color:#38bdf8; font-size:1.25rem; }
+  .osa-card { background:#111827; border:1px solid #1f2937; border-radius:10px; padding:14px; margin-bottom:12px; }
+  .osa-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:10px; }
+  .osa-field label { display:flex; align-items:center; gap:6px; font-size:0.7rem; color:#94a3b8; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.05em; }
+  .osa-field input, .osa-field select { width:100%; background:#0b1120; border:1px solid #374151; color:#e2e8f0; border-radius:6px; padding:6px 8px; font-size:0.85rem; box-sizing:border-box; }
+  .osa-btn { background:#0ea5e9; color:#fff; border:none; border-radius:6px; padding:8px 14px; font-weight:600; cursor:pointer; font-size:0.85rem; }
+  .osa-btn:hover { background:#0284c7; }
+  .osa-btn.secondary { background:#1f2937; border:1px solid #374151; }
+  .osa-btn.secondary:hover { background:#374151; }
+  .osa-btn.success { background:#10b981; }
+  .osa-btn.success:hover { background:#059669; }
+  .osa-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .osa-table-wrap { overflow:auto; max-height:520px; border:1px solid #1f2937; border-radius:8px; position:relative; }
+  table { width:100%; border-collapse:collapse; font-size:0.78rem; }
+  th { position:sticky; top:0; background:#0f172a; color:#94a3b8; text-align:left; padding:8px 10px; border-bottom:1px solid #1f2937; cursor:pointer; user-select:none; white-space:nowrap; }
+  th.sort::after { content:" ⇅"; opacity:0.5; }
+  th.sort-asc::after { content:" ▲"; color:#38bdf8; }
+  th.sort-desc::after { content:" ▼"; color:#38bdf8; }
+  td { padding:8px 10px; border-bottom:1px solid #1f2937; white-space:nowrap; }
+  tr:hover td { background:#0f172a; }
+  .tag { display:inline-block; padding:2px 8px; border-radius:999px; font-size:0.7rem; font-weight:700; }
+  .tag-bull { background:#064e3b; color:#34d399; }
+  .tag-bear { background:#7f1d1d; color:#fca5a5; }
+  .metric { font-variant-numeric: tabular-nums; }
+  .check { cursor:pointer; accent-color:#0ea5e9; transform:scale(1.2); }
+  .compare-panel { display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:10px; margin-top:10px; }
+  .compare-card { background:#111827; border:1px solid #1f2937; border-radius:8px; padding:12px; position:relative; }
+  .compare-card .close { position:absolute; top:6px; right:8px; color:#64748b; cursor:pointer; font-weight:700; }
+  .compare-card h4 { margin:0 0 6px; color:#38bdf8; font-size:0.95rem; }
+  .compare-row { display:flex; justify-content:space-between; font-size:0.8rem; padding:3px 0; border-bottom:1px dashed #1f2937; }
+  .hidden { display:none; }
+  .dropzone { border:2px dashed #334155; border-radius:10px; padding:24px; text-align:center; color:#64748b; cursor:pointer; transition:all .2s; }
+  .dropzone:hover, .dropzone.dragover { border-color:#0ea5e9; background:#0f172a; color:#e2e8f0; }
+  .progress { height:4px; background:#1f2937; border-radius:2px; overflow:hidden; margin-top:8px; }
+  .progress-bar { height:100%; background:#0ea5e9; width:0%; transition:width .3s; }
+  .empty { text-align:center; padding:40px; color:#64748b; }
+  .highlight { color:#fbbf24; font-weight:700; }
+  #statusLog { font-family: monospace; font-size:0.78rem; color:#94a3b8; margin-top:8px; line-height:1.5; max-height:120px; overflow:auto; background:#0b1120; padding:8px; border-radius:6px; border:1px solid #1f2937; }
+  #statusLog .ok { color:#34d399; }
+  #statusLog .warn { color:#fbbf24; }
+  #statusLog .err { color:#f87171; }
+
+  /* Tooltip */
+  .info-icon { display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; border-radius:50%; background:#334155; color:#94a3b8; font-size:10px; cursor:help; position:relative; flex-shrink:0; }
+  .info-icon:hover { background:#475569; color:#e2e8f0; }
+  .tooltip { position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%); width:320px; background:#0f172a; border:1px solid #334155; border-radius:8px; padding:12px; font-size:0.75rem; color:#cbd5e1; line-height:1.5; text-transform:none; letter-spacing:normal; font-weight:400; z-index:100; box-shadow:0 10px 25px rgba(0,0,0,0.4); pointer-events:none; opacity:0; visibility:hidden; transition:all .15s; }
+  .info-icon:hover .tooltip { opacity:1; visibility:visible; bottom:calc(100% + 6px); }
+  .tooltip::after { content:''; position:absolute; top:100%; left:50%; transform:translateX(-50%); border:6px solid transparent; border-top-color:#334155; }
+  .tooltip strong { color:#38bdf8; display:block; margin-bottom:4px; font-size:0.78rem; }
+  .tooltip code { background:#1e293b; padding:1px 4px; border-radius:3px; color:#fbbf24; font-family:monospace; font-size:0.72rem; }
+
+  /* Multi-select expiry */
+  .multi-select-wrap { position:relative; }
+  .multi-select-trigger { width:100%; background:#0b1120; border:1px solid #374151; color:#e2e8f0; border-radius:6px; padding:6px 8px; font-size:0.85rem; cursor:pointer; display:flex; justify-content:space-between; align-items:center; box-sizing:border-box; }
+  .multi-select-trigger:hover { border-color:#475569; }
+  .multi-dropdown { position:absolute; top:calc(100% + 4px); left:0; right:0; background:#0f172a; border:1px solid #334155; border-radius:8px; max-height:240px; overflow:auto; z-index:50; box-shadow:0 10px 25px rgba(0,0,0,0.4); display:none; }
+  .multi-dropdown.open { display:block; }
+  .multi-actions { display:flex; gap:8px; padding:8px 10px; border-bottom:1px solid #1f2937; position:sticky; top:0; background:#0f172a; }
+  .multi-actions button { font-size:0.7rem; padding:3px 8px; border-radius:4px; border:1px solid #374151; background:#1e293b; color:#94a3b8; cursor:pointer; }
+  .multi-actions button:hover { background:#334155; color:#e2e8f0; }
+  .multi-option { display:flex; align-items:center; gap:10px; padding:6px 10px; cursor:pointer; font-size:0.8rem; color:#cbd5e1; text-transform:none; letter-spacing:normal; font-weight:400; }
+  .multi-option:hover { background:#1e293b; }
+  .multi-option input { width:16px; height:16px; flex-shrink:0; margin:0; accent-color:#0ea5e9; cursor:pointer; }
+  .multi-option span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  /* Column Filters */
+  .th-content { display:flex; align-items:center; justify-content:space-between; }
+  .filter-icon { font-size:0.6rem; color:#64748b; cursor:pointer; padding:2px 4px; border-radius:3px; margin-left:4px; }
+  .filter-icon:hover { color:#38bdf8; background:#1e293b; }
+  .filter-icon.active { color:#0ea5e9; }
+  .filter-dropdown { position:fixed; background:#0f172a; border:1px solid #334155; border-radius:8px; padding:10px; z-index:200; box-shadow:0 10px 25px rgba(0,0,0,0.5); display:none; min-width:180px; max-width:260px; }
+  .filter-dropdown.open { display:block; }
+  .filter-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-size:0.75rem; color:#94a3b8; font-weight:600; border-bottom:1px solid #1f2937; padding-bottom:6px; }
+  .filter-header .close { color:#64748b; cursor:pointer; font-weight:700; font-size:0.9rem; }
+  .filter-header .close:hover { color:#e2e8f0; }
+  .filter-body { max-height:220px; overflow:auto; font-size:0.75rem; }
+  .filter-body input[type="number"], .filter-body input[type="text"] {
+    width:100%; background:#0b1120; border:1px solid #374151; color:#e2e8f0; border-radius:4px; padding:4px 6px; font-size:0.75rem; margin-bottom:6px; box-sizing:border-box;
+  }
+  .filter-body .range-row { display:flex; gap:6px; align-items:center; margin-bottom:6px; }
+  .filter-body .range-row input { flex:1; }
+  .filter-body .range-row span { color:#64748b; font-size:0.7rem; }
+  .filter-option { display:flex; align-items:center; gap:8px; padding:4px 0; color:#cbd5e1; cursor:pointer; }
+  .filter-option:hover { color:#e2e8f0; }
+  .filter-option input { width:14px; height:14px; accent-color:#0ea5e9; cursor:pointer; margin:0; flex-shrink:0; }
+  .filter-option span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .filter-actions-bar { display:flex; gap:6px; padding:6px 0; border-bottom:1px solid #1f2937; margin-bottom:4px; position:sticky; top:0; background:#0f172a; }
+  .filter-actions-bar button { font-size:0.65rem; padding:2px 6px; border-radius:3px; border:1px solid #374151; background:#1e293b; color:#94a3b8; cursor:pointer; }
+  .filter-actions-bar button:hover { background:#334155; color:#e2e8f0; }
+  .filter-footer { display:flex; gap:6px; margin-top:8px; padding-top:8px; border-top:1px solid #1f2937; }
+  .filter-footer button { flex:1; font-size:0.7rem; padding:4px 8px; border-radius:4px; border:1px solid #374151; background:#1e293b; color:#94a3b8; cursor:pointer; }
+  .filter-footer button:hover { background:#334155; color:#e2e8f0; }
+  .filter-footer button.primary { background:#0ea5e9; color:#fff; border-color:#0ea5e9; }
+  .filter-footer button.primary:hover { background:#0284c7; }
+  .strike-pair { color:#94a3b8; font-weight:400; margin-left:4px; }
+
+  /* Top N rank highlight */
+  .rank-cell { font-weight:700; color:#38bdf8; font-size:0.9rem; }
+
+  /* Expiry group header in Top N table */
+  .expiry-group td {
+    background:#0f172a;
+    color:#38bdf8;
+    font-weight:700;
+    font-size:0.8rem;
+    padding:6px 10px;
+    border-bottom:1px solid #1f2937;
+    text-align:left;
+    letter-spacing:0.02em;
+  }
+  .expiry-group + tr td { border-top:1px solid #334155; }
+
+  /* Mode Toggle */
+  .mode-toggle { display:flex; gap:6px; margin-bottom:12px; align-items:center; }
+  .mode-toggle-label { font-size:0.72rem; color:#64748b; margin-right:4px; text-transform:uppercase; letter-spacing:0.05em; }
+  .mode-pill { padding:6px 16px; border-radius:20px; border:1px solid #374151; background:#111827; color:#94a3b8; font-size:0.8rem; font-weight:600; cursor:pointer; transition:all .15s; }
+  .mode-pill:hover { border-color:#475569; color:#e2e8f0; }
+  .mode-pill.active { background:#0ea5e9; border-color:#0ea5e9; color:#fff; }
+
+  /* Per-Expiry Targets Card */
+  .pet-card { background:#111827; border:1px solid #1f2937; border-radius:10px; padding:14px; margin-bottom:12px; display:none; }
+  .pet-card.visible { display:block; }
+  .pet-hint { font-size:0.72rem; color:#64748b; margin-bottom:12px; }
+  .pet-hint strong { color:#38bdf8; }
+  .pet-table { width:100%; border-collapse:collapse; font-size:0.8rem; }
+  .pet-table th { color:#64748b; text-align:left; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em; padding:5px 8px; border-bottom:1px solid #1f2937; }
+  .pet-table td { padding:6px 8px; border-bottom:1px solid #1f2937; vertical-align:middle; }
+  .pet-table tr:last-child td { border-bottom:none; }
+  .pet-table tr:hover td { background:#0f172a; }
+  .pet-expiry-label { color:#e2e8f0; font-weight:600; font-size:0.82rem; }
+  .pet-dte { color:#94a3b8; font-size:0.78rem; }
+  .pet-price-input { background:#0b1120; border:1px solid #374151; color:#e2e8f0; border-radius:6px; padding:5px 8px; font-size:0.82rem; width:130px; box-sizing:border-box; }
+  .pet-price-input:focus { outline:none; border-color:#0ea5e9; }
+  .pet-price-input.filled { border-color:#334155; }
+  .pet-implied { font-size:0.78rem; font-weight:600; min-width:60px; display:inline-block; }
+  .pet-implied.pos { color:#34d399; }
+  .pet-implied.neg { color:#f87171; }
+  .pet-implied.zero { color:#64748b; }
+  .pet-empty { color:#64748b; font-size:0.8rem; padding:16px 8px; text-align:center; }
+  .pet-steps { display:flex; gap:6px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
+  .pet-step { display:flex; align-items:center; gap:6px; font-size:0.75rem; color:#94a3b8; }
+  .pet-step-num { width:18px; height:18px; border-radius:50%; background:#1e293b; border:1px solid #374151; display:flex; align-items:center; justify-content:center; font-size:0.65rem; font-weight:700; color:#38bdf8; flex-shrink:0; }
+  .pet-step-sep { color:#374151; font-size:0.8rem; }
+</style>
+</head>
+<body>
+
+<div class="osa-container">
+  <div class="osa-header">
+    <h2>📊 Vertical Spread Analyzer</h2>
+    <div style="font-size:0.8rem;color:#64748b">Client-side • Excel → CSV</div>
+  </div>
+
+  <div class="osa-card">
+    <div class="dropzone" id="dropzone">
+      <div>📁 Drop Excel file here or click to browse</div>
+      <div style="font-size:0.75rem;margin-top:6px">.xlsx / .xls / .csv</div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none">
+    </div>
+    <div class="progress hidden" id="progressWrap"><div class="progress-bar" id="progressBar"></div></div>
+    <div id="fileInfo" style="margin-top:8px;font-size:0.8rem;color:#94a3b8"></div>
+    <div id="statusLog"></div>
+  </div>
+
+  <!-- MARKET VIEW -->
+  <div class="osa-card">
+    <div style="margin-bottom:10px"><strong>Market View</strong></div>
+    <div class="osa-grid">
+      <div class="osa-field">
+        <label>
+          Ticker
+          <span class="info-icon">i
+            <span class="tooltip">
+              <strong>Ticker</strong>
+              Underlying symbol (e.g., QQQ, SPY, AAPL). Labels every output row and the CSV export.
+            </span>
+          </span>
+        </label>
+        <input type="text" id="ticker" placeholder="e.g., QQQ">
+      </div>
+      <div class="osa-field">
+        <label>
+          Underlying Price ($)
+          <span class="info-icon">i
+            <span class="tooltip">
+              <strong>Underlying Price</strong>
+              Current market price. Used to compute the target price for each expiry and the return multiple.
+            </span>
+          </span>
+        </label>
+        <input type="number" id="underlyingPrice" step="0.01" placeholder="e.g., 450.00">
+      </div>
+      <div class="osa-field" id="annualTargetField">
+        <label>
+          Annual Target Return (%)
+          <span class="info-icon">i
+            <span class="tooltip">
+              <strong>Annual Target Return (%)</strong>
+              Your directional view over one year. Positive = bullish, negative = bearish.
+              <br><br>
+              <strong>Linear proration:</strong><br>
+              <code>Period Target = Annual &times; (Days / 365)</code><br>
+              <code>Target Price = Price &times; (1 + Period Target)</code>
+              <br><br>
+              Example: +12% annual on 60 DTE &rarr; +1.97% period target.
+            </span>
+          </span>
+        </label>
+        <input type="number" id="annualTarget" step="0.01" placeholder="+10 bullish, -10 bearish">
+      </div>
+      <div class="osa-field">
+        <label>
+          Dividend Yield (%)
+          <span class="info-icon">i
+            <span class="tooltip">
+              <strong>Dividend Yield (%)</strong>
+              Continuous dividend yield of the underlying. Used in the true Black-Scholes <code>d<sub>2</sub></code> calculation for accurate Nd2 on dividend-paying stocks (e.g., AAPL, SPY, QQQ).
+              <br><br>
+              <strong>Formula:</strong><br>
+              <code>d<sub>2</sub> = [ln(S/K) + (r &minus; q &minus; &frac12;&sigma;<sup>2</sup>)T] / (&sigma;&radic;T)</code>
+              <br><br>
+              Leave at 0 for non-dividend stocks.
+            </span>
+          </span>
+        </label>
+        <input type="number" id="divYield" step="0.01" value="0" placeholder="e.g., 0.5">
+      </div>
+    </div>
+  </div>
+
+  <!-- MODE TOGGLE -->
+  <div class="mode-toggle">
+    <span class="mode-toggle-label">Mode</span>
+    <button class="mode-pill active" id="modeAnnual" onclick="setMode('annual')">📅 Annual %</button>
+    <button class="mode-pill" id="modePerExpiry" onclick="setMode('perExpiry')">🎯 Per-Expiry Price</button>
+  </div>
+
+  <!-- PER-EXPIRY TARGETS CARD -->
+  <div class="pet-card" id="petCard">
+    <div style="margin-bottom:10px"><strong>Per-Expiry Price Targets</strong></div>
+    <div class="pet-steps">
+      <div class="pet-step"><div class="pet-step-num">1</div> Select expiries in the Filters section below</div>
+      <span class="pet-step-sep">→</span>
+      <div class="pet-step"><div class="pet-step-num">2</div> Enter a target price for each selected expiry here</div>
+    </div>
+    <div class="pet-hint">
+      <strong>Target Price</strong> — the specific price level you expect the underlying to reach by each expiry.
+      Implied % = (Target − Current Price) / Current Price, computed live as you type.
+    </div>
+    <table class="pet-table">
+      <thead>
+        <tr>
+          <th>Expiry</th>
+          <th>DTE</th>
+          <th>Target Price ($)</th>
+          <th>Implied %</th>
+        </tr>
+      </thead>
+      <tbody id="petBody">
+        <tr><td colspan="4" class="pet-empty">Upload a file and select expiries to set targets</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- FILTERS -->
+  <div class="osa-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <strong>Filters &amp; Criteria</strong>
+      <div class="osa-actions">
+        <button class="osa-btn" id="runBtn">▶ Run Analysis</button>
+        <button class="osa-btn secondary" id="resetBtn">↺ Reset</button>
+        <button class="osa-btn success" id="exportBtn">⬇ Export CSV</button>
+      </div>
+    </div>
+    <div class="osa-grid">
+      <div class="osa-field multi-select-wrap" id="expiryWrap">
+        <label>
+          Expiries
+          <span class="info-icon">i
+            <span class="tooltip">
+              <strong>Expiries</strong>
+              Select which expiration dates to include. Only spreads from selected expiries are analyzed.
+            </span>
+          </span>
+        </label>
+        <div class="multi-select-trigger" id="expiryTrigger">
+          <span id="expiryLabel">All Expiries</span>
+          <span style="font-size:0.7rem;">▼</span>
+        </div>
+        <div class="multi-dropdown" id="expiryDropdown">
+          <div class="multi-actions">
+            <button onclick="selectAllExpiries(true)">Select All</button>
+            <button onclick="selectAllExpiries(false)">Clear</button>
+          </div>
+          <div id="expiryOptions"></div>
+        </div>
+      </div>
+
+      <div class="osa-field">
+        <label>
+          Cost Basis
+          <span class="info-icon">i
+            <span class="tooltip">
+              <strong>Cost Basis</strong>
+              Which price to use for <strong>all</strong> spread calculations — Max Loss, Max Return, EV, EV/Month, Return Multiple, and Break-Even.
+              <br><br>
+              &bull; <strong>Min</strong> = best-case fill (bid&minus;ask on both legs)<br>
+              &bull; <strong>Mid</strong> = fair value midpoint<br>
+              &bull; <strong>Max</strong> = worst-case fill (conservative)
+            </span>
+          </span>
+        </label>
+        <select id="costBasis">
+          <option value="mid">Mid</option>
+          <option value="min">Min</option>
+          <option value="max">Max</option>
+        </select>
+      </div>
+
+      <div class="osa-field">
+        <label>
+          Min Nd2 (prob)
+          <span class="info-icon">i
+            <span class="tooltip">
+              <strong>Min Nd2</strong>
+              Risk-neutral probability of the <strong>long leg</strong> finishing in-the-money at expiration.
+              <br><br>
+              <strong>Formula (true Black-Scholes):</strong><br>
+              &bull; Call Debit Spread: <code>N(d<sub>2</sub>)</code> of long strike<br>
+              &bull; Put Debit Spread: <code>1 &minus; N(d<sub>2</sub>)</code> of long strike<br>
+              where <code>d<sub>2</sub> = [ln(S/K) + (r &minus; q &minus; &frac12;&sigma;<sup>2</sup>)T] / (&sigma;&radic;T)</code>, <code>r = 4.5%</code>, <code>q = Dividend Yield</code>
+            </span>
+          </span>
+        </label>
+        <input type="number" id="minNd2" value="0" step="0.01" min="0" max="1">
+      </div>
+
+      <div class="osa-field">
+        <label>
+          Min Leg OI (contracts)
+          <span class="info-icon">i
+            <span class="tooltip">
+              <strong>Min Leg OI</strong>
+              Minimum open interest of any single leg — <strong>not</strong> combined.
+              <br><br>
+              <strong>Formula:</strong> <code>min(longLeg.OI, shortLeg.OI)</code>
+            </span>
+          </span>
+        </label>
+        <input type="number" id="minOI" value="0" min="0">
+      </div>
+
+      <div class="osa-field">
+        <label>
+          Min EV/Month (%)
+          <span class="info-icon">i
+            <span class="tooltip">
+              <strong>Min EV/Month</strong>
+              Expected Value normalized to a 30-day period.
+              <br><br>
+              <strong>Formula:</strong><br>
+              <code>EV = (MaxReturn / MaxLoss) &times; Nd2</code><br>
+              <code>EV/Month = EV &divide; (Days / 30)</code>
+              <br><br>
+              MaxReturn, MaxLoss, and all derived metrics use the selected <strong>Cost Basis</strong>.
+            </span>
+          </span>
+        </label>
+        <input type="number" id="minEVMo" value="0" step="0.01">
+      </div>
+
+      <!-- NEW: Top N controls -->
+      <div class="osa-field">
+        <label>
+          Top N
+          <span class="info-icon">i
+            <span class="tooltip">
+              <strong>Top N</strong>
+              How many top-ranked trades to display in the summary panel above the full results table.
+            </span>
+          </span>
+        </label>
+        <input type="number" id="topN" value="5" min="1" max="100">
+      </div>
+
+      <div class="osa-field">
+        <label>
+          Rank By
+          <span class="info-icon">i
+            <span class="tooltip">
+              <strong>Rank By</strong>
+              The metric used to pick the top N trades across all selected expiries. Sorted descending (highest first).
+            </span>
+          </span>
+        </label>
+        <select id="rankBy">
+          <option value="returnMultiple">Return Multiple</option>
+          <option value="ev">EV</option>
+          <option value="evMo">EV / Month</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOP N SUMMARY (NEW) -->
+  <div class="osa-card" id="topNCard" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+      <div>
+        <strong>🏆 Top <span id="topNLabel">5</span> by <span id="rankByLabel">Return Multiple</span></strong>
+        <span style="font-size:0.7rem;color:#64748b;margin-left:8px">across selected expiries</span>
+      </div>
+    </div>
+    <div class="osa-table-wrap">
+      <table id="topNTable">
+        <thead><tr>
+          <th style="width:40px"><div class="th-content">Rank</div></th>
+          <th><div class="th-content">Ticker</div></th>
+          <th><div class="th-content">Structure</div></th>
+          <th><div class="th-content">Target %</div></th>
+          <th><div class="th-content">Target Val</div></th>
+          <th><div class="th-content">Under Ret %</div></th>
+          <th><div class="th-content">Expiry</div></th>
+          <th><div class="th-content">Days</div></th>
+          <th><div class="th-content">Cost Min</div></th>
+          <th><div class="th-content">Cost Mid</div></th>
+          <th><div class="th-content">Cost Max</div></th>
+          <th><div class="th-content">Value</div></th>
+          <th><div class="th-content">Ret Mult</div></th>
+          <th><div class="th-content">Liquidity</div></th>
+          <th><div class="th-content">Nd2</div></th>
+          <th><div class="th-content">EV</div></th>
+          <th><div class="th-content">EV/Mo</div></th>
+        </tr></thead>
+        <tbody id="topNBody"><tr><td colspan="17" class="empty">Run analysis to see top trades</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="osa-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+      <div>
+        <strong>Results <span id="countBadge" class="tag" style="background:#1e293b;color:#94a3b8">0</span></strong>
+        <span id="filterStatus" style="font-size:0.7rem;color:#64748b;margin-left:8px"></span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="osa-btn secondary" id="clearFiltersBtn" style="display:none;font-size:0.75rem;padding:4px 10px">Clear Column Filters</button>
+        <div style="font-size:0.75rem;color:#64748b">Check rows to add to comparison</div>
+      </div>
+    </div>
+
+    <!-- Structure / Strike Search -->
+    <div style="margin-bottom:10px">
+      <input
+        type="text"
+        id="structureSearch"
+        placeholder="🔍 Search Structure / Strikes (e.g. 700, 700/745, Bull, Bear)"
+        style="
+          width:100%;
+          background:#0b1120;
+          border:1px solid #374151;
+          color:#e2e8f0;
+          border-radius:6px;
+          padding:8px 10px;
+          font-size:0.85rem;
+          box-sizing:border-box;
+        "
+      >
+    </div>
+
+    <div class="osa-table-wrap">
+      <table id="resultsTable">
+        <thead><tr>
+          <th style="width:30px"><div class="th-content">✓</div></th>
+          <th class="sort" data-col="ticker"><div class="th-content">Ticker<span class="filter-icon">▼</span></div></th>
+          <th class="sort" data-col="type"><div class="th-content">Structure<span class="filter-icon">▼</span></div></th>
+          <th class="sort" data-col="expiry"><div class="th-content">Expiry<span class="filter-icon">▼</span></div></th>
+          <th class="sort" data-col="days"><div class="th-content">Days<span class="filter-icon">▼</span></div></th>
+          <th class="sort" data-col="targetPct"><div class="th-content">Target %<span class="filter-icon">▼</span></div></th>
+          <th class="sort" data-col="targetPrice"><div class="th-content">Target Val<span class="filter-icon">▼</span></div></th>
+          <th class="sort" data-col="underRet"><div class="th-content">Under Ret %<span class="filter-icon">▼</span></div></th>
+          <th class="sort" data-col="costMin"><div class="th-content">Cost Min<span class="filter-icon">▼</span></div></th>
+          <th class="sort" data-col="costMid"><div class="th-content">Cost Mid<span class="filter-icon">▼</span></div></th>
+          <th class="sort" data-col="costMax"><div class="th-content">Cost Max<span class="filter-icon">▼</span></div></th>
+          <th class="sort" data-col="spreadValue"><div class="th-content">Value<span class="filter-icon">▼</span></div></th>
+          <th class="sort" data-col="returnMultiple"><div class="th-content">Ret Mult<span class="filter-icon">▼</span></div></th>
+          <th class="sort" data-col="minOI"><div class="th-content">Liquidity<span class="filter-icon">▼</span></div></th>
+          <th class="sort" data-col="nd2"><div class="th-content">Nd2<span class="filter-icon">▼</span></div></th>
+          <th class="sort" data-col="ev"><div class="th-content">EV<span class="filter-icon">▼</span></div></th>
+          <th class="sort" data-col="evMo"><div class="th-content">EV/Mo<span class="filter-icon">▼</span></div></th>
+        </tr></thead>
+        <tbody id="resultsBody"><tr><td colspan="17" class="empty">Upload an Excel file, set Market View, and click Run Analysis</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="osa-card" id="compareSection" style="display:none">
+    <strong>Side-by-Side Comparison</strong>
+    <div class="compare-panel" id="comparePanel"></div>
+  </div>
+</div>
+
+<!-- Column Filter Dropdown (positioned via JS) -->
+<div class="filter-dropdown" id="filterDropdown">
+  <div class="filter-header">
+    <span id="filterTitle">Filter</span>
+    <span class="close" onclick="closeFilter()">&times;</span>
+  </div>
+  <div class="filter-body" id="filterBody"></div>
+  <div class="filter-footer">
+    <button class="primary" onclick="applyColumnFilter()">Apply</button>
+    <button onclick="clearColumnFilter()">Clear</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  let rawData = [];
+  let results = [];
+  let filteredResults = [];
+  let selected = new Set();
+  let selectedExpiries = new Set();
+  let sortCol = 'evMo';
+  let sortDir = -1;
+  let activeFilters = {};
+  let currentFilterCol = null;
+  let currentMode = 'annual';          // 'annual' | 'perExpiry'
+  let perExpiryTargets = {};           // { 'YYYY-MM-DD': priceNumber }
+
+  const $ = id => document.getElementById(id);
+  const fmt = (n, d=2) => n == null || !isFinite(n) ? '-' : (+n).toFixed(d);
+  const fmtPct = n => n == null || !isFinite(n) ? '-' : (+(n)*100).toFixed(2)+'%';
+  const fmt4 = n => n == null || !isFinite(n) ? '-' : (+n).toFixed(4);
+
+  function fmtDateLocal(d){
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+  }
+
+  function log(msg, type='info'){
+    const el = $('statusLog');
+    const span = document.createElement('div');
+    span.className = type;
+    const t = new Date().toLocaleTimeString();
+    span.textContent = `[${t}] ${msg}`;
+    el.appendChild(span);
+    el.scrollTop = el.scrollHeight;
+    console.log(`[${type}] ${msg}`);
+  }
+
+  /* --- File Upload --- */
+  const dz = $('dropzone');
+  const fi = $('fileInput');
+  dz.addEventListener('click', () => fi.click());
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); handleFile(e.dataTransfer.files[0]); });
+  fi.addEventListener('change', e => { if(e.target.files[0]) handleFile(e.target.files[0]); });
+
+  function handleFile(file){
+    if(!file){ log('No file selected','err'); return; }
+    log('Reading: ' + file.name);
+    $('fileInfo').textContent = 'Reading ' + file.name + ' …';
+    $('progressWrap').classList.remove('hidden');
+    $('progressBar').style.width = '30%';
+    const reader = new FileReader();
+    reader.onload = function(e){
+      $('progressBar').style.width = '70%';
+      try {
+        if(typeof XLSX === 'undefined'){
+          throw new Error('XLSX library not loaded. Check internet connection.');
+        }
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, {type:'array'});
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(firstSheet, {header:1, defval:''});
+        parseSheet(json);
+        $('progressBar').style.width = '100%';
+        setTimeout(() => $('progressWrap').classList.add('hidden'), 400);
+        $('fileInfo').textContent = 'Loaded ' + file.name + ' • ' + rawData.length + ' option legs';
+        buildExpiryFilter();
+        log('Parsed ' + rawData.length + ' legs. Ready to run.', 'ok');
+      } catch(err) {
+        $('fileInfo').textContent = 'Error: ' + err.message;
+        $('progressWrap').classList.add('hidden');
+        log('Parse error: ' + err.message, 'err');
+      }
+    };
+    reader.onerror = () => log('FileReader error', 'err');
+    reader.readAsArrayBuffer(file);
+  }
+
+  function parseSheet(rows){
+    if(!rows || rows.length < 2){ log('Sheet has < 2 rows', 'err'); return; }
+    const headers = rows[0].map(h => String(h).toLowerCase().trim().replace(/\s+/g,'_'));
+    log('Headers found: ' + headers.join(' | '));
+    const idx = name => headers.findIndex(h => h.includes(name));
+    const iType = idx('type');
+    const iExp = idx('expiry');
+    const iStrike = idx('strike');
+    const iBid = idx('bid');
+    const iAsk = idx('ask');
+    const iOI = idx('open_interest') !== -1 ? idx('open_interest') : idx('oi');
+    const iDelta = idx('delta');
+    const iDays = idx('days_to_expiry');
+    const iIV = idx('iv') !== -1 ? idx('iv') : idx('implied_volatility');
+
+    if(iStrike === -1) { log('ERROR: strike column not found', 'err'); return; }
+    if(iType === -1)   { log('ERROR: type column not found', 'err'); return; }
+    if(iExp === -1)    { log('ERROR: expiry column not found', 'err'); return; }
+
+    rawData = [];
+    let skipped = 0;
+    for(let r=1;r<rows.length;r++){
+      const row = rows[r];
+      if(!row[iStrike]){ skipped++; continue; }
+      let expiryVal = row[iExp];
+      let expiryDate;
+      if(typeof expiryVal === 'number' && expiryVal > 40000){
+        expiryDate = new Date((expiryVal - 25569) * 86400 * 1000);
+      } else {
+        expiryDate = new Date(expiryVal);
+      }
+      if(isNaN(expiryDate)){ skipped++; continue; }
+
+      rawData.push({
+        type: String(row[iType] || '').toUpperCase().trim(),
+        expiry: expiryDate,
+        strike: +row[iStrike],
+        bid: iBid !== -1 ? (+row[iBid] || 0) : 0,
+        ask: iAsk !== -1 ? (+row[iAsk] || 0) : 0,
+        oi: iOI !== -1 ? (+row[iOI] || 0) : 0,
+        delta: iDelta !== -1 ? (+row[iDelta] || 0) : 0,
+        iv: iIV !== -1 ? (+row[iIV] || 0) : 0,
+        days: iDays !== -1 ? (+row[iDays] || Math.ceil((expiryDate - new Date())/86400000)) : Math.ceil((expiryDate - new Date())/86400000)
+      });
+    }
+    if(skipped) log('Skipped ' + skipped + ' rows (missing strike or invalid date)', 'warn');
+  }
+
+  /* --- Expiry Multi-Select --- */
+  function buildExpiryFilter(){
+    const unique = [...new Set(rawData.map(o => fmtDateLocal(o.expiry)))].sort();
+    selectedExpiries = new Set(unique);
+    const container = $('expiryOptions');
+    container.innerHTML = '';
+    unique.forEach(date => {
+      const div = document.createElement('div');
+      div.className = 'multi-option';
+      div.innerHTML = `<input type="checkbox" checked data-date="${date}"> <span>${date}</span>`;
+      div.querySelector('input').addEventListener('change', updateExpirySelection);
+      div.addEventListener('click', (e) => {
+        if(e.target.tagName !== 'INPUT'){
+          const cb = div.querySelector('input');
+          cb.checked = !cb.checked;
+          updateExpirySelection();
+        }
+      });
+      container.appendChild(div);
+    });
+    updateExpiryLabel();
+    renderPerExpiryRows();
+  }
+
+  function updateExpirySelection(){
+    const cbs = document.querySelectorAll('#expiryOptions input[type="checkbox"]');
+    selectedExpiries = new Set();
+    cbs.forEach(cb => { if(cb.checked) selectedExpiries.add(cb.dataset.date); });
+    updateExpiryLabel();
+    renderPerExpiryRows();
+  }
+
+  function updateExpiryLabel(){
+    const total = document.querySelectorAll('#expiryOptions input').length;
+    const sel = selectedExpiries.size;
+    $('expiryLabel').textContent = sel === 0 ? 'None selected' : sel === total ? 'All Expiries' : `${sel} of ${total} selected`;
+  }
+
+  window.selectAllExpiries = function(select){
+    document.querySelectorAll('#expiryOptions input').forEach(cb => cb.checked = select);
+    updateExpirySelection();
+  };
+
+  /* --- Mode Toggle --- */
+  window.setMode = function(mode){
+    currentMode = mode;
+    $('modeAnnual').classList.toggle('active', mode === 'annual');
+    $('modePerExpiry').classList.toggle('active', mode === 'perExpiry');
+    $('annualTargetField').style.display = mode === 'perExpiry' ? 'none' : '';
+    $('petCard').classList.toggle('visible', mode === 'perExpiry');
+    if(mode === 'perExpiry') renderPerExpiryRows();
+  };
+
+  /* --- Per-Expiry Rows --- */
+  function renderPerExpiryRows(){
+    if(currentMode !== 'perExpiry') return;
+    const tbody = $('petBody');
+    if(!tbody) return;
+
+    const sortedExpiries = [...selectedExpiries].sort();
+
+    if(sortedExpiries.length === 0){
+      tbody.innerHTML = '<tr><td colspan="4" class="pet-empty">No expiries selected — check the Expiries selector in Filters below</td></tr>';
+      return;
+    }
+
+    // Build DTE lookup from rawData
+    const dteLookup = {};
+    rawData.forEach(o => {
+      const ds = fmtDateLocal(o.expiry);
+      if(!(ds in dteLookup)) dteLookup[ds] = o.days;
+    });
+
+    const underlyingPrice = +$('underlyingPrice').value;
+
+    tbody.innerHTML = sortedExpiries.map(dateStr => {
+      const dte  = dteLookup[dateStr] != null ? dteLookup[dateStr] : '—';
+      const val  = perExpiryTargets[dateStr] != null ? perExpiryTargets[dateStr] : '';
+      let impliedHtml = '<span class="pet-implied zero">—</span>';
+      if(val !== '' && underlyingPrice > 0){
+        const pct = ((+val / underlyingPrice) - 1) * 100;
+        const cls = pct > 0 ? 'pos' : pct < 0 ? 'neg' : 'zero';
+        const sign = pct >= 0 ? '+' : '';
+        impliedHtml = `<span class="pet-implied ${cls}">${sign}${pct.toFixed(2)}%</span>`;
+      }
+      const filledClass = val !== '' ? 'filled' : '';
+      return `<tr>
+        <td class="pet-expiry-label">${dateStr}</td>
+        <td class="pet-dte">${dte}</td>
+        <td><input type="number" class="pet-price-input ${filledClass}" data-date="${dateStr}"
+              placeholder="e.g. 750.00" step="0.01" value="${val}"
+              oninput="onPetInput(this)"></td>
+        <td id="pet-implied-${dateStr.replace(/-/g,'')}">${impliedHtml}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  window.onPetInput = function(input){
+    const dateStr = input.dataset.date;
+    const val = input.value.trim();
+    if(val === '' || isNaN(+val)){
+      delete perExpiryTargets[dateStr];
+      input.classList.remove('filled');
+    } else {
+      perExpiryTargets[dateStr] = +val;
+      input.classList.add('filled');
+    }
+    // Update implied % live
+    const underlyingPrice = +$('underlyingPrice').value;
+    const impliedCell = $('pet-implied-' + dateStr.replace(/-/g,''));
+    if(impliedCell){
+      if(val !== '' && underlyingPrice > 0){
+        const pct = ((+val / underlyingPrice) - 1) * 100;
+        const cls = pct > 0 ? 'pos' : pct < 0 ? 'neg' : 'zero';
+        const sign = pct >= 0 ? '+' : '';
+        impliedCell.innerHTML = `<span class="pet-implied ${cls}">${sign}${pct.toFixed(2)}%</span>`;
+      } else {
+        impliedCell.innerHTML = '<span class="pet-implied zero">—</span>';
+      }
+    }
+  };
+
+  // Re-render implied % when underlying price changes (per-expiry mode)
+  $('underlyingPrice').addEventListener('input', () => { if(currentMode === 'perExpiry') renderPerExpiryRows(); });
+
+  $('expiryTrigger').addEventListener('click', (e) => {
+    e.stopPropagation();
+    $('expiryDropdown').classList.toggle('open');
+  });
+  document.addEventListener('click', (e) => {
+    if(!$('expiryWrap').contains(e.target)) $('expiryDropdown').classList.remove('open');
+  });
+
+  /* --- Math --- */
+  function normalCDF(x){
+    const a1=0.254829592, a2=-0.284496736, a3=1.421413741, a4=-1.453152027, a5=1.061405429, p=0.3275911;
+    const sign = x<0?-1:1;
+    x = Math.abs(x)/Math.SQRT2;
+    const t = 1/(1+p*x);
+    const y = 1 - (((((a5*t + a4)*t + a3)*t + a2)*t + a1)*t * Math.exp(-x*x));
+    return 0.5*(1+sign*y);
+  }
+
+  function normalizeIV(iv){
+    if(!iv || iv <= 0) return 0;
+    return iv > 1 ? iv / 100 : iv;
+  }
+
+  function computeNd2(S, K, iv, days, q){
+    const sigma = normalizeIV(iv);
+    if(!sigma || !days || days <= 0) return null;
+    const T = days / 365;
+    const r = 0.045;
+    const d2 = (Math.log(S / K) + (r - q - 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T));
+    return normalCDF(d2);
+  }
+
+  /* --- Analysis --- */
+  function runAnalysis(){
+    if(rawData.length===0){ alert('Upload an Excel file first'); return; }
+
+    if(selectedExpiries.size === 0){
+      log('No expiries selected. Nothing to analyze.', 'warn');
+      results = [];
+      filteredResults = [];
+      activeFilters = {};
+      renderTable();
+      renderTopN();
+      renderCompare();
+      updateFilterIcons();
+      return;
+    }
+
+    const ticker = $('ticker').value.trim() || '-';
+    const underlyingPrice = +$('underlyingPrice').value;
+    const annualTarget = +$('annualTarget').value / 100;
+    const divYield = +$('divYield').value / 100;
+
+    if(!underlyingPrice || underlyingPrice <= 0){ alert('Enter a valid Underlying Price'); return; }
+    if(currentMode === 'annual' && isNaN(annualTarget)){ alert('Enter a valid Annual Target Return'); return; }
+    if(isNaN(divYield) || divYield < 0){ alert('Enter a valid Dividend Yield'); return; }
+
+    // Per-expiry mode: warn if any selected expiry has no target price set
+    if(currentMode === 'perExpiry'){
+      const missing = [...selectedExpiries].filter(d => perExpiryTargets[d] == null || perExpiryTargets[d] <= 0);
+      if(missing.length > 0){
+        alert('Per-Expiry Mode: please enter a target price for:\n' + missing.join('\n'));
+        return;
+      }
+    }
+
+    const minNd2 = +$('minNd2').value;
+    const minOI = +$('minOI').value;
+    const minEVMo = +$('minEVMo').value/100;
+    const costBasis = $('costBasis').value;
+
+    log('Running analysis… Cost basis: ' + costBasis + (divYield > 0 ? ' | Div yield: ' + (divYield*100).toFixed(2) + '%' : ''));
+    results = [];
+    const groups = {};
+    rawData.forEach(o => {
+      const dateStr = fmtDateLocal(o.expiry);
+      if(!selectedExpiries.has(dateStr)) return;
+      const key = dateStr+'|'+o.type;
+      if(!groups[key]) groups[key]=[];
+      groups[key].push(o);
+    });
+
+    let tested = 0, skippedDebit = 0, skippedNd2 = 0, skippedOI = 0, skippedEVMo = 0, skippedNoIV = 0, skippedTarget = 0, skippedShortBound = 0;
+
+    for(const key in groups){
+      const opts = groups[key].sort((a,b)=>a.strike-b.strike);
+
+      /* ── Compute target price once per group (same expiry) ── */
+      const days = opts[0].days;
+      let periodTarget, targetPrice;
+      if(currentMode === 'perExpiry'){
+        const dateStr = fmtDateLocal(opts[0].expiry);
+        targetPrice   = perExpiryTargets[dateStr];
+        periodTarget  = (targetPrice / underlyingPrice) - 1;
+      } else {
+        periodTarget = annualTarget * (days / 365);
+        targetPrice  = underlyingPrice * (1 + periodTarget);
+      }
+
+      /* ── Find boundary strike relative to target ── */
+      let boundaryStrike = null;
+      if(opts[0].type === 'CALL'){
+        // Bull Call: first strike >= targetPrice  (ceiling strike)
+        for(const o of opts){
+          if(o.strike >= targetPrice){ boundaryStrike = o.strike; break; }
+        }
+        if(boundaryStrike === null) boundaryStrike = opts[opts.length-1].strike;
+      } else {
+        // Bear Put: last strike <= targetPrice  (floor strike)
+        for(let i = opts.length - 1; i >= 0; i--){
+          if(opts[i].strike <= targetPrice){ boundaryStrike = opts[i].strike; break; }
+        }
+        if(boundaryStrike === null) boundaryStrike = opts[0].strike;
+      }
+
+      for(let i=0;i<opts.length;i++){
+        for(let j=i+1;j<opts.length;j++){
+          const a = opts[i], b = opts[j];
+          let spread = null;
+
+          if(a.type==='CALL' && a.strike < b.strike){
+            const width = b.strike - a.strike;
+            // TARGET CEILING: long strike must be at or below target price
+            if(a.strike > targetPrice){ skippedTarget++; continue; }
+            // SHORT STRIKE BOUND: short strike must be at or below the ceiling strike
+            if(b.strike > boundaryStrike){ skippedShortBound++; continue; }
+
+            const costMax = a.ask - b.bid;
+            const costMin = a.bid - b.ask;
+            const costMid = ((a.bid + a.ask)/2) - ((b.bid + b.ask)/2);
+
+            let cost;
+            if(costBasis === 'min') cost = costMin;
+            else if(costBasis === 'mid') cost = costMid;
+            else cost = costMax;
+
+            const maxReturn = width - cost;
+            const maxLoss = cost;
+            if(maxLoss <= 0){ skippedDebit++; continue; }
+
+            const minOIv = Math.min(a.oi, b.oi);
+
+            let nd2;
+            if(a.iv > 0){
+              const nd2val = computeNd2(underlyingPrice, a.strike, a.iv, days, divYield);
+              nd2 = nd2val !== null ? nd2val : normalCDF(a.delta);
+              if(nd2val === null) skippedNoIV++;
+            } else {
+              nd2 = normalCDF(a.delta);
+              skippedNoIV++;
+            }
+
+            const ev = (maxReturn / maxLoss) * nd2;
+            const evMo = ev / (days / 30);
+
+            let payoffAtTarget = 0;
+            if(targetPrice >= b.strike) payoffAtTarget = width;
+            else if(targetPrice > a.strike) payoffAtTarget = targetPrice - a.strike;
+            const tradeReturn = payoffAtTarget - cost;
+            const tradeReturnPct = cost > 0 ? tradeReturn / cost : 0;
+            const underRet = periodTarget;
+            const returnMultiple = (underRet !== 0 && isFinite(tradeReturnPct)) ? tradeReturnPct / underRet : null;
+
+            spread = {
+              ticker, type:'Bull Call', expiry:a.expiry, days,
+              targetPct: periodTarget, targetPrice, underRet,
+              costMin, costMid, costMax,
+              spreadValue: width * 100,
+              returnMultiple,
+              longStrike:a.strike, shortStrike:b.strike,
+              longOpt:a, shortOpt:b,
+              maxReturn, maxLoss,
+              minOI:minOIv, nd2, ev, evMo
+            };
+
+          } else if(a.type==='PUT' && a.strike > b.strike){
+            const width = a.strike - b.strike;
+            // TARGET FLOOR: long strike must be at or above target price
+            if(a.strike < targetPrice){ skippedTarget++; continue; }
+            // SHORT STRIKE BOUND: short strike must be at or above the floor strike
+            if(b.strike < boundaryStrike){ skippedShortBound++; continue; }
+
+            const costMax = a.ask - b.bid;
+            const costMin = a.bid - b.ask;
+            const costMid = ((a.bid + a.ask)/2) - ((b.bid + b.ask)/2);
+
+            let cost;
+            if(costBasis === 'min') cost = costMin;
+            else if(costBasis === 'mid') cost = costMid;
+            else cost = costMax;
+
+            const maxReturn = width - cost;
+            const maxLoss = cost;
+            if(maxLoss <= 0){ skippedDebit++; continue; }
+
+            const minOIv = Math.min(a.oi, b.oi);
+
+            let nd2;
+            if(a.iv > 0){
+              const nd2val = computeNd2(underlyingPrice, a.strike, a.iv, days, divYield);
+              nd2 = nd2val !== null ? (1 - nd2val) : (1 - normalCDF(a.delta));
+              if(nd2val === null) skippedNoIV++;
+            } else {
+              nd2 = 1 - normalCDF(a.delta);
+              skippedNoIV++;
+            }
+
+            const ev = (maxReturn / maxLoss) * nd2;
+            const evMo = ev / (days / 30);
+
+            let payoffAtTarget = 0;
+            if(targetPrice <= b.strike) payoffAtTarget = width;
+            else if(targetPrice < a.strike) payoffAtTarget = a.strike - targetPrice;
+            const tradeReturn = payoffAtTarget - cost;
+            const tradeReturnPct = cost > 0 ? tradeReturn / cost : 0;
+            const underRet = periodTarget;
+            const returnMultiple = (underRet !== 0 && isFinite(tradeReturnPct)) ? tradeReturnPct / underRet : null;
+
+            spread = {
+              ticker, type:'Bear Put', expiry:a.expiry, days,
+              targetPct: periodTarget, targetPrice, underRet,
+              costMin, costMid, costMax,
+              spreadValue: width * 100,
+              returnMultiple,
+              longStrike:a.strike, shortStrike:b.strike,
+              longOpt:a, shortOpt:b,
+              maxReturn, maxLoss,
+              minOI:minOIv, nd2, ev, evMo
+            };
+          }
+          if(!spread) continue;
+          tested++;
+          if(spread.nd2 < minNd2){ skippedNd2++; continue; }
+          if(spread.minOI < minOI){ skippedOI++; continue; }
+          if(spread.evMo < minEVMo){ skippedEVMo++; continue; }
+          results.push(spread);
+        }
+      }
+    }
+
+    log(`Tested ${tested} spreads. Kept ${results.length}. ` +
+        `Skipped: debit<=0(${skippedDebit}) targetBounds(${skippedTarget}) shortStrikeBounds(${skippedShortBound}) Nd2(${skippedNd2}) OI(${skippedOI}) EVMo(${skippedEVMo}) noIV(${skippedNoIV})`, results.length ? 'ok' : 'warn');
+
+    selected.clear();
+    activeFilters = {};
+    applyFilters();
+    updateFilterIcons();
+    renderTable();
+    renderTopN();
+    renderCompare();
+  }
+
+  /* --- Column Filters --- */
+  const FILTER_COLS = {
+    ticker:      { type:'text',  label:'Ticker' },
+    type:        { type:'set',   label:'Structure' },
+    expiry:      { type:'set',   label:'Expiry' },
+    days:        { type:'range', label:'Days' },
+    targetPct:   { type:'range', label:'Target %' },
+    targetPrice: { type:'range', label:'Target Val' },
+    underRet:    { type:'range', label:'Under Ret %' },
+    costMin:     { type:'range', label:'Cost Min' },
+    costMid:     { type:'range', label:'Cost Mid' },
+    costMax:     { type:'range', label:'Cost Max' },
+    spreadValue: { type:'range', label:'Value' },
+    returnMultiple:{ type:'range', label:'Ret Mult' },
+    minOI:       { type:'range', label:'Liquidity' },
+    nd2:         { type:'range', label:'Nd2' },
+    ev:          { type:'range', label:'EV' },
+    evMo:        { type:'range', label:'EV/Mo' }
+  };
+
+  function openFilter(col, thEl){
+    currentFilterCol = col;
+    const dropdown = $('filterDropdown');
+    const rect = thEl.getBoundingClientRect();
+    dropdown.style.top = (rect.bottom + 4) + 'px';
+    dropdown.style.left = rect.left + 'px';
+    dropdown.style.minWidth = Math.max(rect.width, 180) + 'px';
+    dropdown.classList.add('open');
+    $('filterTitle').textContent = 'Filter: ' + FILTER_COLS[col].label;
+    buildFilterBody(col);
+  }
+
+  function closeFilter(){
+    $('filterDropdown').classList.remove('open');
+    currentFilterCol = null;
+  }
+
+  function buildFilterBody(col){
+    const body = $('filterBody');
+    body.innerHTML = '';
+    const meta = FILTER_COLS[col];
+    const existing = activeFilters[col];
+
+    if(meta.type === 'text'){
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.placeholder = 'Contains...';
+      inp.value = existing ? existing.text : '';
+      inp.id = 'filterInput';
+      body.appendChild(inp);
+
+    } else if(meta.type === 'set'){
+      const values = [...new Set(results.map(r => {
+        if(col === 'expiry') return fmtDateLocal(r.expiry);
+        return r[col];
+      }))].sort();
+
+      const actions = document.createElement('div');
+      actions.className = 'filter-actions-bar';
+      actions.innerHTML = `<button onclick="filterSelectAll(true)">All</button><button onclick="filterSelectAll(false)">None</button>`;
+      body.appendChild(actions);
+
+      const wrap = document.createElement('div');
+      const selSet = existing ? new Set(existing.values) : new Set(values);
+      wrap.innerHTML = values.map(v => {
+        const checked = selSet.has(v) ? 'checked' : '';
+        return `<label class="filter-option"><input type="checkbox" value="${v.replace(/"/g,'&quot;')}" ${checked}> <span>${v}</span></label>`;
+      }).join('');
+      body.appendChild(wrap);
+
+    } else if(meta.type === 'range'){
+      const row = document.createElement('div');
+      row.className = 'range-row';
+      row.innerHTML = `
+        <input type="number" id="filterMin" step="any" placeholder="Min" value="${existing && existing.min != null ? existing.min : ''}">
+        <span>to</span>
+        <input type="number" id="filterMax" step="any" placeholder="Max" value="${existing && existing.max != null ? existing.max : ''}">
+      `;
+      body.appendChild(row);
+    }
+  }
+
+  window.filterSelectAll = function(select){
+    document.querySelectorAll('#filterBody input[type="checkbox"]').forEach(cb => cb.checked = select);
+  };
+
+  window.applyColumnFilter = function(){
+    if(!currentFilterCol) return;
+    const meta = FILTER_COLS[currentFilterCol];
+    const col = currentFilterCol;
+
+    if(meta.type === 'text'){
+      const text = $('filterInput').value.trim();
+      if(text) activeFilters[col] = { type:'text', text };
+      else delete activeFilters[col];
+
+    } else if(meta.type === 'set'){
+      const cbs = document.querySelectorAll('#filterBody input[type="checkbox"]');
+      const vals = [];
+      cbs.forEach(cb => { if(cb.checked) vals.push(cb.value); });
+      if(vals.length === cbs.length) {
+        delete activeFilters[col]; // all selected = no filter
+      } else {
+        activeFilters[col] = { type:'set', values: vals }; // partial or none selected
+      }
+
+    } else if(meta.type === 'range'){
+      const minVal = $('filterMin').value;
+      const maxVal = $('filterMax').value;
+      const min = minVal !== '' ? +minVal : null;
+      const max = maxVal !== '' ? +maxVal : null;
+      if(min != null || max != null) activeFilters[col] = { type:'range', min, max };
+      else delete activeFilters[col];
+    }
+
+    applyFilters();
+    updateFilterIcons();
+    renderTable();
+    closeFilter();
+  };
+
+  window.clearColumnFilter = function(){
+    if(!currentFilterCol) return;
+    delete activeFilters[currentFilterCol];
+    applyFilters();
+    updateFilterIcons();
+    renderTable();
+    renderTopN();
+    closeFilter();
+  };
+  window.closeFilter = closeFilter;
+
+  function applyFilters(){
+    const searchInput = $('structureSearch');
+    const searchText = searchInput ? searchInput.value.trim().toLowerCase() : '';
+    const compactSearchText = searchText.replace(/\s+/g, '');
+
+    filteredResults = results.map((r, i) => ({ idx: i, data: r })).filter(({data}) => {
+
+      // Search across structure type and both strikes.
+      // Examples supported: 700, 700/745, 700 / 745, Bull, Bear
+      if(searchText){
+        const structureText =
+          `${data.type} Buy ${data.longStrike} / Sell ${data.shortStrike} ${data.longStrike}/${data.shortStrike}`
+          .toLowerCase();
+
+        const compactStructureText = structureText.replace(/\s+/g, '');
+
+        if(
+          !structureText.includes(searchText) &&
+          !compactStructureText.includes(compactSearchText)
+        ){
+          return false;
+        }
+      }
+
+      for(let col in activeFilters){
+        const f = activeFilters[col];
+        let val = data[col];
+        if(col === 'expiry') val = fmtDateLocal(val);
+
+        if(f.type === 'set'){
+          if(f.values.length === 0) return false;
+          if(!f.values.includes(val)) return false;
+        } else if(f.type === 'range'){
+          if(f.min != null && val < f.min) return false;
+          if(f.max != null && val > f.max) return false;
+        } else if(f.type === 'text'){
+          if(!String(val).toLowerCase().includes(f.text.toLowerCase())) return false;
+        }
+      }
+      return true;
+    });
+
+    const filterCount = Object.keys(activeFilters).length;
+    $('filterStatus').textContent = filterCount > 0 ? `(${filterCount} column filter${filterCount>1?'s':''} active)` : '';
+    $('clearFiltersBtn').style.display = filterCount > 0 ? 'inline-block' : 'none';
+  }
+
+  function updateFilterIcons(){
+    document.querySelectorAll('th .filter-icon').forEach(icon => {
+      const col = icon.closest('th').dataset.col;
+      if(activeFilters[col]) icon.classList.add('active');
+      else icon.classList.remove('active');
+    });
+  }
+
+  window.clearAllFilters = function(){
+    activeFilters = {};
+    applyFilters();
+    updateFilterIcons();
+    renderTable();
+    renderTopN();
+  };
+
+  $('clearFiltersBtn').addEventListener('click', window.clearAllFilters);
+
+  // Live Structure / Strike search
+  const structureSearch = $('structureSearch');
+  if(structureSearch){
+    structureSearch.addEventListener('input', () => {
+      applyFilters();
+      renderTable();
+      renderTopN();
+    });
+  }
+
+  document.querySelectorAll('th .filter-icon').forEach(icon => {
+    icon.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const th = icon.closest('th');
+      const col = th.dataset.col;
+      if(!col) return;
+      if($('filterDropdown').classList.contains('open') && currentFilterCol === col){
+        closeFilter();
+      } else {
+        openFilter(col, th);
+      }
+    });
+  });
+  document.addEventListener('click', (e) => {
+    if(!$('filterDropdown').contains(e.target) && !e.target.closest('.filter-icon')){
+      closeFilter();
+    }
+  });
+
+  /* --- Rendering --- */
+  function renderTable(){
+    const tbody = $('resultsBody');
+    $('countBadge').textContent = filteredResults.length;
+    if(filteredResults.length===0){
+      tbody.innerHTML='<tr><td colspan="17" class="empty">No spreads match criteria</td></tr>';
+      return;
+    }
+
+    filteredResults.sort((a,b)=>{
+      let av = a.data[sortCol], bv = b.data[sortCol];
+      if(typeof av==='string'){ av=av.toLowerCase(); bv=bv.toLowerCase(); }
+      if(av==null) av=-Infinity; if(bv==null) bv=-Infinity;
+      return (av>bv?1:av<bv?-1:0)*sortDir;
+    });
+
+    tbody.innerHTML = filteredResults.map((item,i)=>{
+      const s = item.data;
+      const origIdx = item.idx;
+      const checked = selected.has(origIdx)?'checked':'';
+      const typeClass = s.type==='Bull Call'?'tag-bull':'tag-bear';
+      return `<tr data-idx="${origIdx}">
+        <td><input type="checkbox" class="check" ${checked} onchange="toggleSelect(${origIdx})"></td>
+        <td>${s.ticker}</td>
+        <td><span class="tag ${typeClass}">${s.type}</span><span class="strike-pair">Buy ${fmt(s.longStrike,1)} / Sell ${fmt(s.shortStrike,1)}</span></td>
+        <td>${fmtDateLocal(s.expiry)}</td>
+        <td class="metric">${s.days}</td>
+        <td class="metric">${fmtPct(s.targetPct)}</td>
+        <td class="metric">${fmt(s.targetPrice,2)}</td>
+        <td class="metric">${fmtPct(s.underRet)}</td>
+        <td class="metric">${fmt(s.costMin,2)}</td>
+        <td class="metric">${fmt(s.costMid,2)}</td>
+        <td class="metric">${fmt(s.costMax,2)}</td>
+        <td class="metric">${s.spreadValue}</td>
+        <td class="metric highlight">${fmt4(s.returnMultiple)}x</td>
+        <td class="metric">${s.minOI}</td>
+        <td class="metric">${fmtPct(s.nd2)}</td>
+        <td class="metric">${fmtPct(s.ev)}</td>
+        <td class="metric">${fmtPct(s.evMo)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  /* --- Top N Summary (per expiry) --- */
+  function renderTopN(){
+    const topN = Math.max(1, parseInt($('topN').value) || 5);
+    const rankBy = $('rankBy').value;
+    const card = $('topNCard');
+
+    if(filteredResults.length === 0){
+      card.style.display = 'none';
+      return;
+    }
+
+    card.style.display = 'block';
+    $('topNLabel').textContent = topN;
+    $('rankByLabel').textContent = $('rankBy').options[$('rankBy').selectedIndex].text;
+
+    // Group by expiry
+    const byExpiry = {};
+    filteredResults.forEach(item => {
+      const r = item.data;
+      const d = fmtDateLocal(r.expiry);
+      if(!byExpiry[d]) byExpiry[d] = [];
+      byExpiry[d].push(r);
+    });
+
+    // Sort each group by rankBy desc, then evMo tie-breaker
+    const sortedExp = Object.keys(byExpiry).sort();
+    const tbody = $('topNBody');
+    let htmlOut = '';
+
+    sortedExp.forEach(exp => {
+      const group = byExpiry[exp].sort((a,b) => {
+        const av = a[rankBy] != null ? a[rankBy] : -Infinity;
+        const bv = b[rankBy] != null ? b[rankBy] : -Infinity;
+        if(bv !== av) return bv - av;
+        return (b.evMo || 0) - (a.evMo || 0);
+      }).slice(0, topN);
+
+      if(group.length === 0) return;
+
+      // Group header row
+      htmlOut += `<tr class="expiry-group"><td colspan="17">📅 ${exp} — Top ${group.length}</td></tr>`;
+
+      group.forEach((s, i) => {
+        const typeClass = s.type==='Bull Call'?'tag-bull':'tag-bear';
+        htmlOut += `<tr>
+          <td class="rank-cell">#${i+1}</td>
+          <td>${s.ticker}</td>
+          <td><span class="tag ${typeClass}">${s.type}</span><span class="strike-pair">Buy ${fmt(s.longStrike,1)} / Sell ${fmt(s.shortStrike,1)}</span></td>
+          <td class="metric">${fmtPct(s.targetPct)}</td>
+          <td class="metric">${fmt(s.targetPrice,2)}</td>
+          <td class="metric">${fmtPct(s.underRet)}</td>
+          <td>${fmtDateLocal(s.expiry)}</td>
+          <td class="metric">${s.days}</td>
+          <td class="metric">${fmt(s.costMin,2)}</td>
+          <td class="metric">${fmt(s.costMid,2)}</td>
+          <td class="metric">${fmt(s.costMax,2)}</td>
+          <td class="metric">${s.spreadValue}</td>
+          <td class="metric highlight">${fmt4(s.returnMultiple)}x</td>
+          <td class="metric">${s.minOI}</td>
+          <td class="metric">${fmtPct(s.nd2)}</td>
+          <td class="metric">${fmtPct(s.ev)}</td>
+          <td class="metric">${fmtPct(s.evMo)}</td>
+        </tr>`;
+      });
+    });
+
+    if(!htmlOut){
+      tbody.innerHTML = '<tr><td colspan="17" class="empty">No trades to rank</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = htmlOut;
+  }
+
+  $('topN').addEventListener('change', renderTopN);
+  $('rankBy').addEventListener('change', renderTopN);
+
+  window.toggleSelect = function(origIdx){
+    if(selected.has(origIdx)) selected.delete(origIdx); else selected.add(origIdx);
+    renderCompare();
+  };
+
+  function renderCompare(){
+    const panel = $('comparePanel');
+    const section = $('compareSection');
+    if(selected.size===0){ section.style.display='none'; return; }
+    section.style.display='block';
+    const items = Array.from(selected).map(idx => results[idx]).filter(Boolean);
+    panel.innerHTML = items.map(s=>{
+      return `<div class="compare-card">
+        <span class="close" onclick="toggleSelect(${results.indexOf(s)})">&times;</span>
+        <h4>${s.type==='Bull Call'?'🟢 Bull Call':'🔴 Bear Put'} Buy ${fmt(s.longStrike,1)} / Sell ${fmt(s.shortStrike,1)}</h4>
+        <div class="compare-row"><span>Ticker</span><span>${s.ticker}</span></div>
+        <div class="compare-row"><span>Expiry</span><span>${fmtDateLocal(s.expiry)}</span></div>
+        <div class="compare-row"><span>Days</span><span>${s.days}</span></div>
+        <div class="compare-row"><span>Target %</span><span>${fmtPct(s.targetPct)}</span></div>
+        <div class="compare-row"><span>Target Val</span><span>${fmt(s.targetPrice,2)}</span></div>
+        <div class="compare-row"><span>Under Ret %</span><span>${fmtPct(s.underRet)}</span></div>
+        <div class="compare-row"><span>Cost Min</span><span>${fmt(s.costMin,2)}</span></div>
+        <div class="compare-row"><span>Cost Mid</span><span>${fmt(s.costMid,2)}</span></div>
+        <div class="compare-row"><span>Cost Max</span><span>${fmt(s.costMax,2)}</span></div>
+        <div class="compare-row"><span>Value</span><span>${s.spreadValue}</span></div>
+        <div class="compare-row"><span>Ret Mult</span><span class="highlight">${fmt4(s.returnMultiple)}x</span></div>
+        <div class="compare-row"><span>Liquidity</span><span>${s.minOI}</span></div>
+        <div class="compare-row"><span>Nd2</span><span>${fmtPct(s.nd2)}</span></div>
+        <div class="compare-row"><span>EV</span><span>${fmtPct(s.ev)}</span></div>
+        <div class="compare-row"><span>EV/Mo</span><span>${fmtPct(s.evMo)}</span></div>
+      </div>`;
+    }).join('');
+  }
+
+  document.querySelectorAll('th.sort').forEach(th=>{
+    th.addEventListener('click', (e) => {
+      if(e.target.closest('.filter-icon')) return;
+      const col = th.dataset.col;
+      if(sortCol===col) sortDir *= -1; else { sortCol=col; sortDir=-1; }
+      document.querySelectorAll('th.sort').forEach(t=>{ t.classList.remove('sort-asc','sort-desc'); });
+      th.classList.add(sortDir===1?'sort-asc':'sort-desc');
+      renderTable();
+    });
+  });
+
+  $('runBtn').addEventListener('click', runAnalysis);
+  $('resetBtn').addEventListener('click', ()=>{
+    $('ticker').value=''; $('underlyingPrice').value=''; $('annualTarget').value=''; $('divYield').value='0';
+    $('minNd2').value=0; $('minOI').value=0; $('minEVMo').value=0;
+    $('costBasis').value='mid';
+    $('topN').value=5; $('rankBy').value='returnMultiple';
+    if($('structureSearch')) $('structureSearch').value='';
+    const unique = [...new Set(rawData.map(o => fmtDateLocal(o.expiry)))].sort();
+    selectedExpiries = new Set(unique);
+    document.querySelectorAll('#expiryOptions input').forEach(cb => cb.checked = true);
+    updateExpiryLabel();
+    // Clear per-expiry targets and re-render rows
+    perExpiryTargets = {};
+    renderPerExpiryRows();
+    runAnalysis();
+  });
+  $('exportBtn').addEventListener('click', ()=>{
+    if(results.length===0) return;
+    const headers = ['Ticker','Structure','LongStrike','ShortStrike','Expiry','Days','TargetPct','TargetValue','UnderlyingReturnPct','CostMin','CostMid','CostMax','Value','ReturnMultiple','Liquidity','Nd2','EV','EVPerMonth'];
+    const rows = results.map(s=>[
+      s.ticker, s.type, s.longStrike, s.shortStrike, fmtDateLocal(s.expiry), s.days,
+      s.targetPct, s.targetPrice, s.underRet,
+      s.costMin, s.costMid, s.costMax,
+      s.spreadValue, s.returnMultiple,
+      s.minOI, s.nd2, s.ev, s.evMo
+    ]);
+    let csv = headers.join(',')+'\n'+rows.map(r=>r.map(v=>v==null?'':v).join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'spreads_analysis.csv'; a.click(); URL.revokeObjectURL(url);
+  });
+
+  log('Ready. Upload file + set Market View, then Run Analysis.');
+})();
+</script>
+
+</body>
+</html>
